@@ -10,6 +10,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  release:
+    types: [published]
   pull_request:
     paths: ["packaging/**", "nobodydoc/**", "requirements*.txt", ".github/workflows/build-windows.yml"]
   workflow_dispatch:
@@ -63,7 +65,15 @@ jobs:
           retention-days: 30
 
       - name: Publication (tags v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create ${{ github.ref_name }} NobodyDoc.exe NobodyDoc-portable.zip --title "NobodyDoc ${{ github.ref_name }}" --generate-notes
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        # La Release peut avoir été créée à la main depuis GitHub : on y ajoute alors les fichiers.
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" NobodyDoc.exe NobodyDoc-portable.zip --clobber
+          else
+            gh release create "$TAG" NobodyDoc.exe NobodyDoc-portable.zip --title "NobodyDoc $TAG" --generate-notes
+          fi
