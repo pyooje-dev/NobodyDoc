@@ -3,9 +3,29 @@
 Anonymise **en local** des documents Word, Excel, PowerPoint et des mails avant
 de les envoyer à une IA ou à un prestataire. Aucune donnée ne quitte le poste.
 
-> État : étape 1 (moteur d'anonymisation + ligne de commande). L'interface
-> graphique, la table de correspondance chiffrée et l'exécutable Windows
-> portable arrivent dans les étapes suivantes.
+> État : étapes 1 et 2 (moteur d'anonymisation et interface graphique). La
+> table de correspondance chiffrée et l'exécutable Windows portable arrivent
+> dans les étapes suivantes.
+
+## Interface
+
+1. **Glissez vos fichiers** (ou un dossier entier) dans la fenêtre.
+2. **Vérifiez** la liste de ce qui a été trouvé : décochez ce qui ne doit pas
+   être masqué, ajoutez un terme oublié. Les propositions du modèle de langue
+   sont signalées « à vérifier ». « Ne jamais masquer » et « Toujours
+   masquer » enrichissent le dictionnaire pour les fois suivantes.
+3. **Récupérez les copies** dans le dossier « Anonymisé », avec un rapport par
+   fichier.
+
+| Fichiers | Vérification | Résultat |
+|---|---|---|
+| ![](docs/2_fichiers.png) | ![](docs/3_verification.png) | ![](docs/4_resultat.png) |
+
+Le dictionnaire de l'entreprise s'édite depuis la fenêtre principale ; il est
+enregistré dans `%APPDATA%\NobodyDoc\dictionnaire.csv` et peut être exporté
+pour être partagé avec des collègues.
+
+Lancement (en attendant l'exécutable) : `python -m nobodydoc.gui`
 
 ## Ce qui est masqué
 
@@ -64,7 +84,7 @@ Microsoft;EXCLUSION;
 * Un terme en majuscules (acronyme) n'est cherché qu'en majuscules.
 * La catégorie `EXCLUSION` liste les mots à ne jamais masquer.
 
-## Utilisation (ligne de commande, pour l'instant)
+## Ligne de commande
 
 ```
 pip install -r requirements.txt

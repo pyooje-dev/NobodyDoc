@@ -56,3 +56,15 @@ def test_ner_name_found_once_is_masked_everywhere(dictionary, ner):
     assert s.anonymize_text("DUPONT") == "[PERSONNE_1]"
     assert s.anonymize_text("Mme Dupont") == "Mme [PERSONNE_1]"
     assert s.anonymize_text("Jean Dupont") == "[PERSONNE_1]"
+
+
+def test_dictionary_csv_roundtrip(tmp_path, dictionary):
+    from nobodydoc.dictionary import CompanyDictionary
+
+    dictionary.add_term("Opération Zèbre", "projet", ["Zèbre"])
+    path = tmp_path / "dico.csv"
+    dictionary.save(path)
+    loaded = CompanyDictionary.load(path)
+    assert [t.term for t in loaded.terms] == ["Acme", "DSI", "Phoenix", "Opération Zèbre"]
+    assert loaded.terms[-1].category == "PROJET" and loaded.terms[-1].variants == ["Zèbre"]
+    assert loaded.is_excluded("microsoft")

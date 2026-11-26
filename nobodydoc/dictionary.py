@@ -52,7 +52,10 @@ def is_acronym(form: str) -> bool:
 class CompanyDictionary:
     def __init__(self, terms: list[DictionaryTerm] | None = None, exclusions: list[str] | None = None):
         self.terms: list[DictionaryTerm] = list(terms or [])
-        self.exclusions: set[str] = {normalize_value("", e) for e in (exclusions or []) if e.strip()}
+        self.exclusion_list: list[str] = []
+        self.exclusions: set[str] = set()
+        for exclusion in exclusions or []:
+            self.add_exclusion(exclusion)
         self._compiled: list[tuple[re.Pattern, dict[str, str]]] | None = None
 
     # -- Chargement / sauvegarde ---------------------------------------------
@@ -115,11 +118,78 @@ class CompanyDictionary:
                     {"terme": t.term, "categorie": t.category, "variantes": t.variants}
                     for t in self.terms
                 ],
-                "exclusions": sorted(self.exclusions),
+                "exclusions": list(self.exclusion_list),
             },
             ensure_ascii=False,
             indent=2,
         )
+
+    def to_csv(self) -> str:
+        buf = io.StringIO()
+        writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+        writer.writerow(["terme", "categorie", "variantes"])
+        for t in self.terms:
+            writer.writerow([t.term, t.category, "|".join(t.variants)])
+        for e in self.exclusion_list:
+            writer.writerow([e, "EXCLUSION", ""])
+        return buf.getvalue()
+
+    def save(self, path: str | Path) -> None:
+        """CSV avec BOM (s'ouvre correctement dans Excel) ou JSON selon l'extension."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix.lower() == ".json":
+            path.write_text(self.to_json(), encoding="utf-8")
+        else:
+            path.write_text(self.to_csv(), encoding="utf-8-sig", newline="")
+
+    # -- Modification ---------------------------------------------------------
+
+    def add_term(self, term: str, category: str, variants: list[str] | None = None) -> DictionaryTerm | None:
+        term = term.strip()
+        if not term:
+            return None
+        category = normalize_category(category)
+        key = normalize_value("", term)
+        for existing in self.terms:
+            if normalize_value("", existing.term) == key:
+                existing.category = category
+                for v in variants or []:
+                    if v.strip() and v.strip() not in existing.variants:
+                        existing.variants.append(v.strip())
+                self._compiled = None
+                return existing
+        new = DictionaryTerm(term, category, [v.strip() for v in variants or [] if v.strip()])
+        self.terms.append(new)
+        self._compiled = None
+        return new
+
+    def remove_term(self, term: str) -> None:
+        key = normalize_value("", term)
+        self.terms = [t for t in self.terms if normalize_value("", t.term) != key]
+        self._compiled = None
+
+    def add_exclusion(self, value: str) -> None:
+        value = value.strip()
+        key = normalize_value("", value)
+        if value and key not in self.exclusions:
+            self.exclusions.add(key)
+            self.exclusion_list.append(value)
+
+    def remove_exclusion(self, value: str) -> None:
+        key = normalize_value("", value)
+        self.exclusions.discard(key)
+        self.exclusion_list = [e for e in self.exclusion_list if normalize_value("", e) != key]
+
+    def replace_all(self, terms: list[DictionaryTerm], exclusions: list[str]) -> None:
+        self.terms = list(terms)
+        self.exclusions, self.exclusion_list = set(), []
+        for exclusion in exclusions:
+            self.add_exclusion(exclusion)
+        self._compiled = None
+
+    def categories(self) -> list[str]:
+        return sorted({t.category for t in self.terms})
 
     # -- Utilisation ----------------------------------------------------------
 
