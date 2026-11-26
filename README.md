@@ -3,8 +3,21 @@
 Anonymise **en local** des documents Word, Excel, PowerPoint et des mails avant
 de les envoyer à une IA ou à un prestataire. Aucune donnée ne quitte le poste.
 
-> État : étapes 1 à 3 (moteur, interface graphique, restauration). L'exécutable
-> Windows portable arrive à l'étape suivante.
+## Télécharger (Windows, sans installation)
+
+* **NobodyDoc.exe** : un seul fichier, à double-cliquer. Le premier
+  démarrage prend quelques secondes (décompression).
+* **NobodyDoc-portable.zip** : à décompresser où vous voulez (bureau, clé
+  USB), puis lancez `NobodyDoc.exe` dans le dossier. Démarrage plus rapide.
+
+Les deux sont fabriqués automatiquement par GitHub (onglet *Actions* →
+*Exécutable Windows*, ou page *Releases* pour une version publiée). Aucun
+droit administrateur n'est nécessaire. Le guide d'utilisation est dans l'onglet
+**Aide** de l'application et dans [`docs/GUIDE.md`](docs/GUIDE.md).
+
+> Windows SmartScreen peut afficher « Windows a protégé votre ordinateur » au
+> premier lancement, car l'exécutable n'est pas signé : cliquez sur
+> *Informations complémentaires* puis *Exécuter quand même*.
 
 ## Interface
 
@@ -115,6 +128,15 @@ Restauration : `python -m nobodydoc reponse.docx --restaurer` (table la plus
 récente) ou `--restaurer chemin\vers\table.ndtable`.
 
 ## Développement
+
+Fabriquer l'exécutable à la main (sous Windows) :
+
+```
+pip install -r requirements.txt pyinstaller
+pyinstaller packaging/nobodydoc.spec                 # dossier dist/NobodyDoc
+set NOBODYDOC_ONEFILE=1 && pyinstaller packaging/nobodydoc.spec   # fichier unique
+dist\NobodyDoc\NobodyDoc.exe --auto-test resultat.txt   # vérification
+```
 
 ```
 pip install -r requirements-dev.txt

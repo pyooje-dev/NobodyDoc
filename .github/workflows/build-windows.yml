@@ -1,0 +1,69 @@
+name: Exécutable Windows
+
+# Fabrique NobodyDoc pour Windows, sans installation :
+#   - NobodyDoc.exe : un seul fichier à double-cliquer ;
+#   - NobodyDoc-portable.zip : dossier à décompresser (démarrage plus rapide).
+# Chaque exécutable est lancé avec --auto-test avant d'être publié.
+# Un tag « v* » (ex. v0.4.0) publie les fichiers dans une Release GitHub.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths: ["packaging/**", "nobodydoc/**", "requirements*.txt", ".github/workflows/build-windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Dépendances
+        run: pip install -r requirements.txt pyinstaller==6.22.3
+
+      - name: Version portable (dossier)
+        run: pyinstaller --noconfirm --distpath dist packaging/nobodydoc.spec
+      - name: Auto-test de la version portable
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\NobodyDoc\NobodyDoc.exe -ArgumentList '--auto-test', "$PWD\autotest-dossier.txt" -Wait -PassThru
+          Get-Content autotest-dossier.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+      - name: Zip portable
+        shell: pwsh
+        run: Compress-Archive -Path dist\NobodyDoc -DestinationPath NobodyDoc-portable.zip
+
+      - name: Version un seul fichier
+        env:
+          NOBODYDOC_ONEFILE: "1"
+        run: pyinstaller --noconfirm --distpath dist-onefile --workpath build-onefile packaging/nobodydoc.spec
+      - name: Auto-test du fichier unique
+        shell: pwsh
+        run: |
+          $p = Start-Process dist-onefile\NobodyDoc.exe -ArgumentList '--auto-test', "$PWD\autotest-exe.txt" -Wait -PassThru
+          Get-Content autotest-exe.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+          Copy-Item dist-onefile\NobodyDoc.exe NobodyDoc.exe
+          "Taille : {0:N0} Mo" -f ((Get-Item NobodyDoc.exe).Length / 1MB)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NobodyDoc-Windows
+          path: |
+            NobodyDoc.exe
+            NobodyDoc-portable.zip
+          retention-days: 30
+
+      - name: Publication (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} NobodyDoc.exe NobodyDoc-portable.zip --title "NobodyDoc ${{ github.ref_name }}" --generate-notes

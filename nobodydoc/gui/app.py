@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QTabWidget,
+    QTextBrowser,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -58,6 +59,7 @@ SOURCE_LABELS = {
     "manuel": "Ajout manuel",
     "metadonnee": "Auteur",
 }
+RESOURCES = Path(__file__).parent / "resources"
 DEFAULT_CATEGORIES = ["PERSONNE", "ORGANISATION", "CLIENT", "PRODUIT", "PROJET", "DEPARTEMENT", "LIEU", "DIVERS"]
 OLD_FORMATS = {".doc": "Word", ".xls": "Excel", ".ppt": "PowerPoint"}
 
@@ -674,6 +676,7 @@ class MainWindow(QMainWindow):
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(self.stack, "Anonymiser")
         self.tabs.addTab(self.restore_page, "Restaurer les vrais noms")
+        self.tabs.addTab(self._help_page(), "Aide")
         self.tabs.currentChanged.connect(
             lambda i: self.restore_page.reload() if self.tabs.widget(i) is self.restore_page else None)
         self.setCentralWidget(self.tabs)
@@ -687,6 +690,17 @@ class MainWindow(QMainWindow):
         self.result_page.restart_requested.connect(self.restart)
         self.review_page.keep_table.setChecked(bool(self.prefs.get("garder_table", True)))
         self._refresh_dictionary_label()
+
+    @staticmethod
+    def _help_page() -> QWidget:
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        try:
+            browser.setMarkdown((RESOURCES / "guide.md").read_text(encoding="utf-8"))
+        except OSError:
+            browser.setPlainText("Guide introuvable.")
+        browser.setStyleSheet("QTextBrowser { border: none; padding: 18px 28px; font-size: 10.5pt; }")
+        return browser
 
     # ------------------------------------------------------------------ dictionnaire
 
@@ -794,6 +808,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("NobodyDoc")
     app.setStyle("Fusion")
     app.setStyleSheet(style.STYLESHEET)
+    app.setWindowIcon(QIcon(str(RESOURCES / "icone.png")))
     window = MainWindow()
     window.show()
     # Fichiers passés en argument (glisser sur l'icône de l'exécutable).
