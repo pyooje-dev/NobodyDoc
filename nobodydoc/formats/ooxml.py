@@ -155,6 +155,18 @@ class OoxmlHandler:
                                 and _local(el.tag) not in BLANKED_PROPERTIES):
                             yield el.text
 
+    def iter_entities(self, data: bytes) -> Iterator[tuple[str, str]]:
+        """Valeurs à masquer déduites de la structure (colonnes « Nom » d'Excel)."""
+        from .xlsx_columns import iter_column_entities
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                is_excel = any(n.startswith("xl/worksheets/") for n in zf.namelist())
+        except zipfile.BadZipFile:
+            return
+        if is_excel:
+            yield from iter_column_entities(data)
+
     # -------------------------------------------------------------- passe 2
 
     def anonymize(self, data: bytes, session: AnonymizationSession, report: FileReport) -> bytes:

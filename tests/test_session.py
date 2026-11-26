@@ -68,3 +68,13 @@ def test_dictionary_csv_roundtrip(tmp_path, dictionary):
     assert [t.term for t in loaded.terms] == ["Acme", "DSI", "Phoenix", "Opération Zèbre"]
     assert loaded.terms[-1].category == "PROJET" and loaded.terms[-1].variants == ["Zèbre"]
     assert loaded.is_excluded("microsoft")
+
+
+def test_uppercase_surname_attached_to_first_name(dictionary, ner):
+    if ner is None:
+        pytest.skip("modèle spaCy absent")
+    s = make(dictionary, ner=ner, use_ner=True)
+    text = "Réunion du 12 mars avec DUPONT Jean et la DSI."
+    s.collect([text])
+    out = s.anonymize_text(text)
+    assert "DUPONT" not in out and "Jean" not in out and "[DEPARTEMENT_1]" in out

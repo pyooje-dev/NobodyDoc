@@ -93,7 +93,7 @@ class AnonymizationSession:
         if self.ner is not None and self.ner.available:
             ner_spans = dict(self.ner.find_spans_many(batch))
         for i, text in enumerate(batch):
-            spans = self._static_spans(text) + ner_spans.get(i, [])
+            spans = self._static_spans(text) + [self._extend_person(text, s) for s in ner_spans.get(i, [])]
             for span in self._resolve(text, spans):
                 entity = self._register(span.text, span.category, span.source)
                 if entity is not None:
@@ -105,6 +105,16 @@ class AnonymizationSession:
         if entity is not None:
             entity.enabled = True
             entity.occurrences = max(entity.occurrences, self.count_occurrences(value.strip()))
+        return entity
+
+    def add_detected(self, value: str, category: str, source: str) -> Entity | None:
+        """Valeur repérée par la structure du document (ex. colonne « Nom » d'Excel)."""
+        value = value.strip()
+        if not value or PLACEHOLDER_RE.fullmatch(value):
+            return None
+        entity = self._register(value, category, source)
+        if entity is not None:
+            entity.occurrences += 1
         return entity
 
     def pseudonymize_value(self, value: str, category: str) -> str:
@@ -214,6 +224,32 @@ class AnonymizationSession:
             if all(span.end <= c.start or span.start >= c.end for c in chosen):
                 chosen.append(span)
         return sorted(chosen, key=lambda s: s.start)
+
+    _UPPER_WORD = re.compile(r"[A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ'’\-]+")
+
+    def _extend_person(self, text: str, span: Span) -> Span:
+        """« DUPONT Jean » : le modèle ne repère souvent que « Jean ». On rattache au
+        nom les mots voisins écrits entièrement en majuscules (sauf termes du dictionnaire)."""
+        if span.category != "PERSONNE":
+            return span
+        start, end = span.start, span.end
+        for _ in range(2):  # à gauche
+            m = re.search(r"([^\s]+)[ \t]$", text[:start])
+            if not m or not self._UPPER_WORD.fullmatch(m.group(1)) or self._is_known_term(m.group(1)):
+                break
+            start = m.start(1)
+        for _ in range(2):  # à droite
+            m = re.match(r"[ \t]([^\s,;.()]+)", text[end:])
+            if not m or not self._UPPER_WORD.fullmatch(m.group(1)) or self._is_known_term(m.group(1)):
+                break
+            end += m.end(1)
+        if (start, end) == (span.start, span.end):
+            return span
+        return Span(start, end, span.category, span.source, text[start:end])
+
+    def _is_known_term(self, word: str) -> bool:
+        return (self.dictionary.category_for(word) is not None or self.dictionary.is_excluded(word)
+                or word.casefold() in COMMON_FALSE_POSITIVES)
 
     def _key(self, value: str, category: str | None) -> str:
         if category is None:

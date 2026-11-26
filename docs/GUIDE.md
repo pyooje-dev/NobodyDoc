@@ -55,7 +55,9 @@ pour le partager avec vos collègues, et **Importer** pour récupérer le leur.
 
 Noms de personnes et d'entreprises, e-mails, téléphones, adresses postales,
 IBAN, cartes bancaires, numéros de sécurité sociale, SIREN/SIRET/TVA, sites
-web, adresses IP et les termes de votre dictionnaire. L'outil efface aussi
+web, adresses IP et les termes de votre dictionnaire. Dans Excel, les colonnes
+dont l'en-tête désigne des personnes ou des sociétés (« NOM Prénom », « Contact »,
+« Client »...) sont masquées cellule par cellule. L'outil efface aussi
 l'auteur et la société cachés dans les propriétés des fichiers, les auteurs des
 commentaires et les informations techniques des mails.
 
