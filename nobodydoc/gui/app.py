@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QStyle,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -39,7 +40,9 @@ from ..entities import CATEGORY_LABELS, normalize_category
 from ..formats import SUPPORTED_EXTENSIONS
 from ..session import AnonymizationSession
 from . import style
+from ..vault import TableStore
 from .dictionary_dialog import DictionaryDialog
+from .restore_page import RestorePage
 from .workers import AnalyzeWorker, WriteWorker, start
 
 FILE_FILTER = (
@@ -353,6 +356,8 @@ class ReviewPage(QWidget):
         add = button("Ajouter")
         add.clicked.connect(self._add_term)
 
+        self.keep_table = QCheckBox("Garder une table chiffrée pour restaurer les vrais noms dans les réponses")
+        self.keep_table.setChecked(True)
         self.out_label = label("", "subtitle", wrap=False)
         change_out = button("Changer…", "link")
         change_out.clicked.connect(self._choose_out_dir)
@@ -396,6 +401,7 @@ class ReviewPage(QWidget):
         lay.addWidget(self.table, 1)
         lay.addLayout(actions)
         lay.addWidget(add_card)
+        lay.addWidget(self.keep_table)
         lay.addLayout(out_row)
 
     # ------------------------------------------------------------------ remplissage
@@ -602,14 +608,18 @@ class ResultPage(QWidget):
         lay.addWidget(self.list, 1)
         lay.addLayout(row)
 
-    def show_reports(self, reports, out_dir: Path) -> None:
+    def show_reports(self, reports, out_dir: Path, table_saved: bool = False) -> None:
         self.out_dir = out_dir
         ok = [r for r in reports if not r.error]
         errors = [r for r in reports if r.error]
         total = sum(r.total for r in ok)
         self.title.setText("✓ C'est fait" if not errors else "Terminé, avec des erreurs")
-        self.summary.setText(f"{len(ok)} fichier(s) anonymisé(s), {total} remplacement(s). "
-                             f"Les copies sont dans {out_dir}.")
+        summary = (f"{len(ok)} fichier(s) anonymisé(s), {total} remplacement(s). "
+                   f"Les copies sont dans {out_dir}.")
+        if table_saved:
+            summary += (" La table de correspondance est enregistrée (chiffrée) : l'onglet "
+                        "« Restaurer les vrais noms » remettra les vraies valeurs dans les réponses.")
+        self.summary.setText(summary)
         self.list.clear()
         for report in reports:
             name = Path(report.source).name
@@ -658,7 +668,15 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         for page in (self.files_page, self.progress_page, self.review_page, self.result_page):
             self.stack.addWidget(page)
-        self.setCentralWidget(self.stack)
+        self.store = TableStore()
+        self.restore_page = RestorePage(self.store, self.prefs)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.addTab(self.stack, "Anonymiser")
+        self.tabs.addTab(self.restore_page, "Restaurer les vrais noms")
+        self.tabs.currentChanged.connect(
+            lambda i: self.restore_page.reload() if self.tabs.widget(i) is self.restore_page else None)
+        self.setCentralWidget(self.tabs)
 
         self.files_page.places.setChecked(bool(self.prefs.get("masquer_lieux", False)))
         self.files_page.analyze_requested.connect(self.analyze)
@@ -667,6 +685,7 @@ class MainWindow(QMainWindow):
         self.review_page.anonymize_requested.connect(self.write)
         self.review_page.dictionary_changed.connect(self._save_dictionary)
         self.result_page.restart_requested.connect(self.restart)
+        self.review_page.keep_table.setChecked(bool(self.prefs.get("garder_table", True)))
         self._refresh_dictionary_label()
 
     # ------------------------------------------------------------------ dictionnaire
@@ -745,7 +764,19 @@ class MainWindow(QMainWindow):
         self._thread = start(worker, self)
 
     def _written(self, reports, out_dir: Path) -> None:
-        self.result_page.show_reports(reports, out_dir)
+        keep = self.review_page.keep_table.isChecked()
+        self.prefs["garder_table"] = keep
+        settings.save_prefs(self.prefs)
+        saved = False
+        sources = [r.source for r in reports if not r.error]
+        if keep and sources:
+            try:
+                self.store.save_session(self.session, sources)
+                saved = True
+            except Exception as exc:
+                QMessageBox.warning(self, "Table non enregistrée",
+                                    f"La table de correspondance n'a pas pu être enregistrée :\n{exc}")
+        self.result_page.show_reports(reports, out_dir, saved)
         self.stack.setCurrentWidget(self.result_page)
 
     def _failed(self, message: str) -> None:

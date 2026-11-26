@@ -121,6 +121,12 @@ QTabWidget::pane {{
     background: {SURFACE};
 }}
 QTabBar::tab {{
-    padding: 7px 14px;
+    padding: 9px 18px;
+    font-size: 10.5pt;
+}}
+QTabBar::tab:selected {{
+    color: {ACCENT};
+    font-weight: 600;
+    border-bottom: 2px solid {ACCENT};
 }}
 """
