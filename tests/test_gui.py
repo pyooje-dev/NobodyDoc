@@ -19,7 +19,16 @@ def app(monkeypatch, tmp_path):
     for name in ("information", "warning", "critical"):
         monkeypatch.setattr(box, name, staticmethod(lambda *a, **k: box.Ok))
     monkeypatch.setattr(box, "question", staticmethod(lambda *a, **k: box.Yes))
-    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    yield app
+    # Détruit les fenêtres tant que l'application existe (sinon plantage à la sortie).
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    for widget in QtWidgets.QApplication.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    app.processEvents()
 
 
 def run_analysis(window, app):
