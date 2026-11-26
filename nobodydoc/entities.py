@@ -21,6 +21,12 @@ CATEGORY_LABELS = {
     "ADRESSE": "Adresse postale",
     "URL": "Site web",
     "IP": "Adresse IP",
+    "CLIENT": "Client",
+    "PRODUIT": "Produit",
+    "PROJET": "Projet",
+    "DEPARTEMENT": "Département",
+    "ACRONYME": "Acronyme",
+    "DIVERS": "Divers",
 }
 
 # Ordre de priorité quand deux détections se chevauchent avec la même longueur.

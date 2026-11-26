@@ -148,9 +148,11 @@ class EmailHandler:
         msg = self._load(data)
         for part in msg.walk():
             for name in ADDRESS_HEADERS:
-                for display, _addr in getaddresses([_header_text(v) for v in part.get_all(name, [])]):
+                for display, addr in getaddresses([_header_text(v) for v in part.get_all(name, [])]):
                     if display:
                         yield display
+                    if addr:
+                        yield addr
             for name in TEXT_HEADERS:
                 if part.get(name):
                     yield _header_text(part.get(name))

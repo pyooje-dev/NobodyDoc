@@ -21,7 +21,14 @@ from typing import Iterable
 from .detectors.ner import COMMON_FALSE_POSITIVES, NerDetector
 from .detectors.rules import ALL_RULE_CATEGORIES, find_rule_spans
 from .dictionary import CompanyDictionary, is_acronym
-from .entities import PLACEHOLDER_RE, SOURCE_PRIORITY, Entity, Span, normalize_value
+from .entities import (
+    PLACEHOLDER_RE,
+    SOURCE_PRIORITY,
+    Entity,
+    Span,
+    normalize_category,
+    normalize_value,
+)
 
 
 @dataclass
@@ -94,7 +101,11 @@ class AnonymizationSession:
 
     def add_manual(self, value: str, category: str) -> Entity | None:
         """Ajout d'un terme oublié par l'utilisateur lors de la validation."""
-        return self._register(value.strip(), category, "manuel")
+        entity = self._register(value.strip(), normalize_category(category), "manuel")
+        if entity is not None:
+            entity.enabled = True
+            entity.occurrences = max(entity.occurrences, self.count_occurrences(value.strip()))
+        return entity
 
     def pseudonymize_value(self, value: str, category: str) -> str:
         """Jeton pour une valeur entière (auteur d'un commentaire, nom d'expéditeur...)."""
@@ -134,6 +145,13 @@ class AnonymizationSession:
         return self.apply(text).text
 
     # ------------------------------------------------------------------ consultation
+
+    def count_occurrences(self, value: str) -> int:
+        """Nombre d'apparitions d'une valeur dans les textes déjà analysés."""
+        pattern = re.compile(
+            r"(?<!\w)" + re.escape(value).replace(r"\ ", r"\s+") + r"(?!\w)", re.IGNORECASE
+        )
+        return sum(len(pattern.findall(t)) for t in self._seen_texts)
 
     def entity_list(self) -> list[Entity]:
         return sorted(self.entities.values(), key=lambda e: (e.category, e.placeholder))

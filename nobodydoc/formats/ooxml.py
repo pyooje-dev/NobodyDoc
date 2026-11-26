@@ -167,7 +167,7 @@ class OoxmlHandler:
                 content = src.read(info)
                 if THUMBNAIL.match(name):
                     removed.add(name)
-                    report.warn("Miniature d'aperçu supprimée.")
+                    report.metadata += 1
                     continue
                 if name.lower().endswith(EMBEDDED_OFFICE):
                     content = self.anonymize(content, session, report)
