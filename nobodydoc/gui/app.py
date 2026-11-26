@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QTabWidget,
-    QTextBrowser,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -58,6 +58,7 @@ SOURCE_LABELS = {
     "connu": "Déjà repéré",
     "manuel": "Ajout manuel",
     "metadonnee": "Auteur",
+    "colonne": "Colonne de noms (Excel)",
 }
 RESOURCES = Path(__file__).parent / "resources"
 DEFAULT_CATEGORIES = ["PERSONNE", "ORGANISATION", "CLIENT", "PRODUIT", "PROJET", "DEPARTEMENT", "LIEU", "DIVERS"]
@@ -462,7 +463,7 @@ class ReviewPage(QWidget):
 
     @staticmethod
     def _source_label(sources: set[str]) -> str:
-        for key in ("manuel", "dictionnaire", "regle"):
+        for key in ("manuel", "dictionnaire", "regle", "colonne"):
             if key in sources:
                 return SOURCE_LABELS[key]
         return SOURCE_LABELS["ner"]
@@ -649,6 +650,81 @@ class ResultPage(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.out_dir)))
 
 
+# ============================================================================ aide
+
+HELP_ICONS = {"Anonymiser": "1", "Remettre": "2", "Le dictionnaire": "3", "Ce qui": "✓", "Bon à savoir": "i"}
+
+
+def split_guide(markdown: str) -> tuple[str, str, list[tuple[str, str]]]:
+    """Découpe le guide en (titre, introduction, [(titre de section, contenu)])."""
+    title, intro, sections = "", [], []
+    current: list[str] | None = None
+    for line in markdown.splitlines():
+        if line.startswith("# ") and not title:
+            title = line[2:].strip()
+        elif line.startswith("## "):
+            current = []
+            sections.append((line[3:].strip(), current))
+        elif current is None:
+            intro.append(line)
+        else:
+            current.append(line)
+    return title, "\n".join(intro).strip(), [(t, "\n".join(body).strip()) for t, body in sections]
+
+
+class HelpPage(QScrollArea):
+    """Guide d'utilisation présenté en cartes, une par section."""
+
+    def __init__(self, guide: Path):
+        super().__init__()
+        self.setObjectName("help")
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.NoFrame)
+        try:
+            title, intro, sections = split_guide(guide.read_text(encoding="utf-8"))
+        except OSError:
+            title, intro, sections = "Guide introuvable", "", []
+
+        content = QWidget()
+        content.setObjectName("helpContent")
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(28, 24, 28, 24)
+        lay.setSpacing(14)
+        lay.addWidget(label(title, "title"))
+        if intro:
+            lay.addWidget(self._markdown(intro, "subtitle"))
+        self.cards: list[QFrame] = []
+        for section_title, body in sections:
+            card = QFrame()
+            card.setObjectName("card")
+            card_lay = QVBoxLayout(card)
+            card_lay.setContentsMargins(20, 16, 20, 16)
+            card_lay.setSpacing(8)
+            badge = next((v for k, v in HELP_ICONS.items() if section_title.startswith(k)), "•")
+            header = label(f"{badge}  ·  {section_title}" if badge.isdigit() else section_title, "helpTitle")
+            card_lay.addWidget(header)
+            line = QFrame()
+            line.setFixedHeight(1)
+            line.setStyleSheet(f"background: {style.BORDER};")
+            card_lay.addWidget(line)
+            card_lay.addWidget(self._markdown(body, "helpBody"))
+            lay.addWidget(card)
+            self.cards.append(card)
+        lay.addStretch()
+        self.setWidget(content)
+
+    @staticmethod
+    def _markdown(text: str, name: str) -> QLabel:
+        lab = QLabel()
+        lab.setObjectName(name)
+        lab.setTextFormat(Qt.MarkdownText)
+        lab.setText(text)
+        lab.setWordWrap(True)
+        lab.setOpenExternalLinks(True)
+        lab.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        return lab
+
+
 # ============================================================================ fenêtre
 
 
@@ -693,14 +769,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _help_page() -> QWidget:
-        browser = QTextBrowser()
-        browser.setOpenExternalLinks(True)
-        try:
-            browser.setMarkdown((RESOURCES / "guide.md").read_text(encoding="utf-8"))
-        except OSError:
-            browser.setPlainText("Guide introuvable.")
-        browser.setStyleSheet("QTextBrowser { border: none; padding: 18px 28px; font-size: 10.5pt; }")
-        return browser
+        return HelpPage(RESOURCES / "guide.md")
 
     # ------------------------------------------------------------------ dictionnaire
 
@@ -806,8 +875,7 @@ class MainWindow(QMainWindow):
 def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv if argv is None else argv)
     app.setApplicationName("NobodyDoc")
-    app.setStyle("Fusion")
-    app.setStyleSheet(style.STYLESHEET)
+    style.apply(app)
     app.setWindowIcon(QIcon(str(RESOURCES / "icone.png")))
     window = MainWindow()
     window.show()

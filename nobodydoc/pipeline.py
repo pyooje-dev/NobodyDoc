@@ -35,7 +35,11 @@ def collect(paths: Iterable[Path], session: AnonymizationSession,
             report.error = f"Format non pris en charge ({path.suffix}). Formats acceptés : " + ", ".join(SUPPORTED_EXTENSIONS)
         else:
             try:
-                session.collect(handler.iter_texts(path.read_bytes()))
+                data = path.read_bytes()
+                session.collect(handler.iter_texts(data))
+                if hasattr(handler, "iter_entities"):
+                    for value, category in handler.iter_entities(data):
+                        session.add_detected(value, category, "colonne")
             except Exception as exc:  # fichier corrompu, protégé par mot de passe...
                 report.error = f"Lecture impossible : {exc}"
         reports.append(report)
