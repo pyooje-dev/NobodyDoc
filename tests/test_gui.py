@@ -118,3 +118,30 @@ def test_dictionary_dialog_roundtrip(app):
     assert [(t.term, t.category, t.variants) for t in result.terms] == [
         ("Acme", "CLIENT", ["ACME Corp"]), ("Zèbre", "PROJET", [])]
     assert result.exclusion_list == ["Microsoft"]
+
+
+def test_restore_tab(app, tmp_path):
+    from nobodydoc.gui.app import MainWindow
+    from nobodydoc.gui.workers import WriteWorker
+
+    (tmp_path / "cr.docx").write_bytes(make_docx())
+    window = MainWindow()
+    window.files_page.add_paths([tmp_path / "cr.docx"])
+    run_analysis(window, app)
+    out_dir = tmp_path / "sortie"
+    worker = WriteWorker(window.session, window.reports, out_dir)
+    worker.finished.connect(lambda reports: window._written(reports, out_dir))
+    worker.run()
+    app.processEvents()
+
+    page = window.restore_page
+    window.tabs.setCurrentWidget(page)
+    assert len(page.tables) == 1
+    page.input.setPlainText("Merci de rappeler [TELEPHONE_1] ou écrire à [EMAIL_1]. [PERSONNE_99] ?")
+    page.restore_text()
+    assert page.output.toPlainText().startswith("Merci de rappeler 06 12 34 56 78 ou écrire à claire.martin@")
+    assert "[PERSONNE_99]" in page.text_status.text()
+
+    QtWidgets.QMessageBox.exec = lambda self: 0  # fenêtre de compte rendu
+    [report] = page.restore_paths([out_dir / "cr_anonymise.docx"])
+    assert not report.error and (out_dir / "cr_restaure.docx").exists()

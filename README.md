@@ -3,9 +3,8 @@
 Anonymise **en local** des documents Word, Excel, PowerPoint et des mails avant
 de les envoyer à une IA ou à un prestataire. Aucune donnée ne quitte le poste.
 
-> État : étapes 1 et 2 (moteur d'anonymisation et interface graphique). La
-> table de correspondance chiffrée et l'exécutable Windows portable arrivent
-> dans les étapes suivantes.
+> État : étapes 1 à 3 (moteur, interface graphique, restauration). L'exécutable
+> Windows portable arrive à l'étape suivante.
 
 ## Interface
 
@@ -26,6 +25,23 @@ enregistré dans `%APPDATA%\NobodyDoc\dictionnaire.csv` et peut être exporté
 pour être partagé avec des collègues.
 
 Lancement (en attendant l'exécutable) : `python -m nobodydoc.gui`
+
+## Restaurer les vrais noms
+
+Après chaque anonymisation, la correspondance jeton → valeur d'origine est
+enregistrée dans `%APPDATA%\NobodyDoc\tables`, **chiffrée** (AES-256-GCM).
+La clé est protégée par Windows (DPAPI) : seul votre compte Windows, sur ce
+poste, peut relire les tables, sans mot de passe à retenir.
+
+Dans l'onglet **Restaurer les vrais noms**, collez la réponse de l'IA ou du
+prestataire (ou glissez le document renvoyé) : les jetons sont remplacés par
+les vraies valeurs. Les jetons légèrement réécrits par une IA (`[Personne 1]`,
+`PERSONNE_1`) sont reconnus. Un jeton absent de la table choisie est signalé.
+
+Les tables sont supprimées automatiquement après 90 jours (réglable : 30
+jours, 1 an, jamais) et peuvent être supprimées à la main.
+
+![](docs/6_restaurer.png)
 
 ## Ce qui est masqué
 
@@ -92,7 +108,11 @@ python -m nobodydoc rapport.docx clients.xlsx mail.msg --dictionnaire dico.csv -
 ```
 
 Options : `--sans-ner` (règles et dictionnaire seulement), `--lieux` (masque
-aussi villes et pays), `--table` (affiche la correspondance jeton → valeur).
+aussi villes et pays), `--table` (affiche la correspondance jeton → valeur),
+`--sans-sauvegarde` (n'enregistre pas la table chiffrée).
+
+Restauration : `python -m nobodydoc reponse.docx --restaurer` (table la plus
+récente) ou `--restaurer chemin\vers\table.ndtable`.
 
 ## Développement
 

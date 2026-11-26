@@ -67,3 +67,56 @@ def anonymize_files(paths: Iterable[Path], session: AnonymizationSession, out_di
                     progress: ProgressCallback | None = None) -> list[FileReport]:
     reports = collect(paths, session, progress)
     return write(reports, session, out_dir, progress)
+
+
+# ----------------------------------------------------------------------------- restauration
+
+RESTORED_SUFFIX = "_restaure"
+
+
+def restored_path(source: Path, out_dir: Path | None = None) -> Path:
+    stem = source.stem
+    if stem.endswith(OUTPUT_SUFFIX):
+        stem = stem[: -len(OUTPUT_SUFFIX)]
+    handler = handler_for(source.suffix)
+    ext = source.suffix
+    if handler is not None and hasattr(handler, "output_extension"):
+        ext = handler.output_extension(ext)
+    return (out_dir or source.parent) / f"{stem}{RESTORED_SUFFIX}{ext}"
+
+
+def restore_files(paths: Iterable[Path], table, out_dir: Path | None = None,
+                  progress: ProgressCallback | None = None) -> list[FileReport]:
+    """Remet les vraies valeurs dans des fichiers contenant des jetons.
+
+    ``table`` est une ``vault.MappingTable``. Les copies sont écrites à côté des
+    fichiers d'origine (ou dans ``out_dir``) avec le suffixe « _restaure ».
+    """
+    paths = list(paths)
+    reports = []
+    for i, path in enumerate(paths):
+        if progress:
+            progress(f"Restauration de {path.name}", i, len(paths))
+        report = FileReport(str(path))
+        handler = handler_for(path.suffix)
+        if handler is None:
+            report.error = f"Format non pris en charge ({path.suffix})."
+            reports.append(report)
+            continue
+        try:
+            data = path.read_bytes()
+            unknown = set()
+            for text in handler.iter_texts(data):
+                unknown.update(table.unknown_tokens(text))
+            target = restored_path(path, out_dir)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(handler.anonymize(data, table, report))
+            report.output = str(target)
+            if unknown:
+                report.warn(
+                    "Jetons absents de cette table (mauvaise table ?) : " + ", ".join(sorted(unknown)[:10])
+                )
+        except Exception as exc:
+            report.error = f"Restauration impossible : {exc}"
+        reports.append(report)
+    return reports
