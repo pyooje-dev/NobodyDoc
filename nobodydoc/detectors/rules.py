@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Callable, Iterator
 
@@ -96,10 +97,159 @@ def _url_finder(text: str) -> Iterator[tuple[int, int]]:
         yield start, end
 
 
+def _email_finder(text: str) -> Iterator[tuple[int, int]]:
+    # L'apostrophe n'est admise qu'à l'intérieur (o'neil) : dans 'jean@acme.fr'
+    # (SQL, code), les guillemets ne font pas partie de l'adresse.
+    for m in _EMAIL_RE.finditer(text):
+        # « user:mdp@serveur » dans une chaîne de connexion n'est pas un e-mail.
+        if _URI_USERINFO_RE.search(text, max(0, m.start() - 200), m.start()):
+            continue
+        yield m.span()
+
+
+_EMAIL_RE = re.compile(r"[\w+\-](?:[\w.+\-']*[\w+\-])?@[\w\-]+(?:\.[\w\-]+)*\.[A-Za-z]{2,}")
+_URI_USERINFO_RE = re.compile(r"://[^\s/@'\"]*\Z")
+
+# --- Code, configuration et chaînes de connexion -------------------------------
+
+# Valeurs qui ne sont pas des données : variables, types, paramètres de requête...
+_NOT_A_VALUE = {
+    "none", "null", "nil", "true", "false", "undefined", "str", "string", "int", "number",
+    "bool", "boolean", "any", "object", "bytes", "char", "varchar", "text", "optional",
+    "localhost", "127.0.0.1", "0.0.0.0", "::1", "*", "example", "changeme", "xxx", "****",
+}
+_CODE_PREFIXES = re.compile(
+    r"(?:self|this|os|config|conf|cfg|settings|env|process|cls|ctx|args|params|options|opts|"
+    r"request|req|session|app|data|credentials|creds|secrets|vault)\.", re.I
+)
+
+_SECRET_KEYS = (
+    r"(?:[\w\-]*[_.\-])?(?:pass|pwd|mdp|token|secret|secret[_\-]?key|api[_\-]?key|"
+    r"access[_\-]?key|private[_\-]?key|credentials?|mot_de_passe|auth[_\-]?token)"
+    r"|[\w\-]*(?:password|passwd|apikey|accountkey|sharedaccesskey)"
+    r"|mot\s+de\s+passe"
+)
+_USER_KEYS = (
+    r"(?:[\w\-]*[_.\-])?(?:user(?:[_\-]?(?:name|id))?|username|login|uid)|user\s+id"
+)
+_HOST_KEYS = (
+    r"(?:[\w\-]*[_.\-])?(?:host|hostname|host_name|server|servername|server_name)"
+    r"|data\s+source|address|addr|network\s+address"
+)
+_KV_TEMPLATE = (
+    r"(?<![\w.\-])(?:{keys})[\"']?\]?"
+    r"(?:\s*(?:=>|:=|=|:)\s*|\s+(?=[\"']))"
+    r"(?:\"(?P<dq>[^\"\n]*)\"|'(?P<sq>[^'\n]*)'|(?P<bare>[^\s;&,'\"()\[\]{{}}<>]+))"
+)
+
+
+def _kv_finder(keys: str, numbers_ok: bool = True) -> Finder:
+    compiled = re.compile(_KV_TEMPLATE.format(keys=keys), re.I)
+
+    def find(text: str) -> Iterator[tuple[int, int]]:
+        for m in compiled.finditer(text):
+            group = next(g for g in ("dq", "sq", "bare") if m.group(g) is not None)
+            start, end = m.span(group)
+            value = text[start:end]
+            if _plausible_value(value, m.group(0)[: m.start(group) - m.start()], group == "bare",
+                                text[end:end + 40], numbers_ok):
+                yield start, end
+
+    return find
+
+
+def _plausible_value(value: str, key: str, bare: bool, after: str, numbers_ok: bool) -> bool:
+    if not value.strip() or re.search(r"\s", value):  # libellé (« Mot de passe »), pas un secret
+        return False
+    low = value.casefold()
+    key_word = re.sub(r"[\"'\]\s=:>]+$", "", key).casefold()
+    if low in _NOT_A_VALUE or (key_word and key_word in low) or len(set(value)) == 1:
+        return False
+    if value[0] in "$@:?%{<*#" or "{{" in value or "${" in value:  # paramètre, gabarit
+        return False
+    if not numbers_ok and value.isdigit():
+        return False
+    if bare:
+        if after[:1] and after[:1] in "([":  # appel de fonction : password = get_password()
+            return False
+        if "=" not in key and re.match(r"[ \t]+[^\W\d_]{2,}", after):  # phrase : « mot de passe : voir avec la DSI »
+            return False
+        if _CODE_PREFIXES.match(value):
+            return False
+    return True
+
+
+def _is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value.strip("[]"))
+        return True
+    except ValueError:
+        return False
+
+
+# scheme://utilisateur:mot_de_passe@serveur:port/base (PostgreSQL, MySQL, MongoDB,
+# Redis, AMQP, FTP, LDAP, JDBC...). Les liens web http(s) sont traités en entier.
+_URI_RE = re.compile(
+    r"\b(?:jdbc:)?(?!https?://)[a-z][a-z0-9+.\-]{1,20}://"
+    r"(?:(?P<user>[^\s:@/'\"]+)(?::(?P<password>[^\s@'\"]+))?@)?"
+    r"(?P<host>\[[0-9A-Fa-f:.]+\]|[\w\-]+(?:\.[\w\-]+)*)",
+    re.I,
+)
+
+
+def _uri_part_finder(part: str) -> Finder:
+    def find(text: str) -> Iterator[tuple[int, int]]:
+        for m in _URI_RE.finditer(text):
+            if m.group(part) is None:
+                continue
+            value = m.group(part)
+            if part == "host" and (_is_ip(value) or value.casefold() in _NOT_A_VALUE):
+                continue  # les adresses IP sont prises par leur propre règle
+            if part == "password" and (value[0] in "$%{<*" or len(set(value)) == 1):
+                continue
+            yield m.span(part)
+
+    return find
+
+
+# Serveurs internes : srv-paie01.acme.local, db.prod.internal...
+_INTERNAL_HOST_RE = re.compile(
+    r"(?<![\w.\-@])(?!(?:com|org|net|io|fr|eu|de|java|javax|android)\.)"
+    r"[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?)*"
+    r"\.(?:local|lan|internal|intra|intranet|corp|localdomain)(?![\w\-]|\.\w)",
+    re.I,
+)
+
+
+def _ipv6_finder(text: str) -> Iterator[tuple[int, int]]:
+    for m in re.finditer(r"(?<![\w:.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])", text):
+        value = m.group()
+        if len(value) < 6 or value.count(":") < 2:
+            continue
+        try:
+            ipaddress.IPv6Address(value)
+        except ValueError:
+            continue
+        yield m.span()
+
+
+# Formats de clés reconnaissables par leur préfixe.
+_KEY_PATTERNS = [
+    r"\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b",  # AWS
+    r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b",  # GitHub
+    r"\bgithub_pat_[A-Za-z0-9_]{22,255}\b",
+    r"\bglpat-[A-Za-z0-9_\-]{20,}",  # GitLab
+    r"\bxox[abposr]-[A-Za-z0-9\-]{10,}",  # Slack
+    r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b",  # Stripe
+    r"\bAIza[0-9A-Za-z_\-]{35}",  # Google
+    r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_\-]{20,}",  # OpenAI, Anthropic...
+    r"\beyJ[A-Za-z0-9_\-]{5,}\.eyJ[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]+",  # JWT
+    r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )*PRIVATE KEY-----",
+]
+
+
 RULES: dict[str, list[Finder]] = {
-    "EMAIL": [
-        _regex_finder(r"[\w.+\-']+@[\w\-]+(?:\.[\w\-]+)*\.[A-Za-z]{2,}"),
-    ],
+    "EMAIL": [_email_finder],
     "URL": [_url_finder],
     "IBAN": [_iban_finder],
     "CARTE_BANCAIRE": [
@@ -146,7 +296,24 @@ RULES: dict[str, list[Finder]] = {
         _regex_finder(
             r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
             r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\.?\d)"
-        )
+        ),
+        _ipv6_finder,
+    ],
+    "SECRET": [
+        *(_regex_finder(p) for p in _KEY_PATTERNS),
+        _regex_finder(r"\b(?:Bearer|Basic)\s+([A-Za-z0-9\-._~+/]{16,}=*)", group=1),
+        _regex_finder(r"\bIDENTIFIED\s+BY\s+'([^'\n]+)'", flags=re.I, group=1),
+        _uri_part_finder("password"),
+        _kv_finder(_SECRET_KEYS),
+    ],
+    "IDENTIFIANT": [
+        _uri_part_finder("user"),
+        _kv_finder(_USER_KEYS, numbers_ok=False),
+    ],
+    "HOTE": [
+        _uri_part_finder("host"),
+        _regex_finder(_INTERNAL_HOST_RE.pattern, flags=re.I),
+        _kv_finder(_HOST_KEYS),
     ],
     "ADRESSE": [
         # 12 bis rue des Lilas / 3, avenue Foch

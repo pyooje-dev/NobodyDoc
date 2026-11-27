@@ -8,8 +8,8 @@ n'est envoyé sur Internet, et vos originaux ne sont jamais modifiés.
 ## Anonymiser
 
 1. **Déposez vos fichiers** dans la fenêtre : Word, Excel, PowerPoint, mails
-   Outlook (.msg, .eml) ou fichiers texte. Vous pouvez aussi déposer un dossier
-   entier.
+   Outlook (.msg, .eml), fichiers texte, requêtes SQL ou code. Vous pouvez aussi
+   déposer un dossier entier.
 2. Cliquez sur **Analyser les fichiers**.
 3. **Vérifiez la liste.** Chaque ligne est une information qui va être masquée.
    * Décochez ce qui ne doit pas l'être.
@@ -55,7 +55,8 @@ pour le partager avec vos collègues, et **Importer** pour récupérer le leur.
 
 Noms de personnes et d'entreprises, e-mails, téléphones, adresses postales,
 IBAN, cartes bancaires, numéros de sécurité sociale, SIREN/SIRET/TVA, sites
-web, adresses IP et les termes de votre dictionnaire. Dans Excel, les colonnes
+web, adresses IP, noms de serveurs, identifiants, mots de passe, clés d'accès
+et les termes de votre dictionnaire. Dans Excel, les colonnes
 dont l'en-tête désigne des personnes ou des sociétés (« NOM Prénom », « Contact »,
 « Client »...) sont masquées cellule par cellule. L'outil efface aussi
 l'auteur et la société cachés dans les propriétés des fichiers, les auteurs des
@@ -66,5 +67,9 @@ commentaires et les informations techniques des mails.
 * Les anciens formats (.doc, .xls, .ppt) doivent d'abord être réenregistrés au
   format récent (Fichier > Enregistrer sous).
 * Un fichier protégé par mot de passe doit être déverrouillé avant.
+* Les requêtes SQL, le code source (.py, .js, .java...) et les fichiers de
+  configuration (.yaml, .ini, .env, .xml...) sont acceptés : seules les valeurs
+  sensibles changent, le code reste utilisable. Les serveurs au nom court
+  (« srv-paie01 ») se masquent en les ajoutant au dictionnaire.
 * Les pièces jointes PDF ou images d'un mail sont retirées de la copie.
 * Les noms d'onglets Excel ne sont pas renommés : un avertissement les signale.
