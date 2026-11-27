@@ -67,7 +67,10 @@ jours, 1 an, jamais) et peuvent être supprimées à la main.
 | IBAN, cartes bancaires, n° de sécurité sociale | | règles avec clé de contrôle |
 | SIREN / SIRET / TVA intracommunautaire | | règles |
 | Adresses postales, codes postaux + villes | | règles |
-| Sites web, adresses IP | | règles |
+| Sites web, adresses IP (v4 et v6) | | règles |
+| Noms de serveurs | `srv-paie01.acme.local` → `[HOTE_1]` | règles (domaines internes, chaînes de connexion) |
+| Identifiants et mots de passe | `password=S3cret!` → `password=[SECRET_1]` | règles (chaînes de connexion, `password=`, `api_key:`...) |
+| Clés et jetons d'accès | AWS, GitHub, GitLab, Slack, Stripe, Google, JWT, clés privées | règles |
 
 Une même valeur reçoit toujours le même jeton, dans tous les fichiers traités
 ensemble. Un nom repéré une fois est masqué partout, y compris seul
@@ -86,7 +89,18 @@ ensemble. Un nom repéré une fois est masqué partout, y compris seul
   corps texte et HTML, pièces jointes Office. Les en-têtes techniques
   (serveurs, adresses IP) sont retirés, ainsi que les pièces jointes dans un
   format non pris en charge (PDF, images).
-* **Texte** (.txt, .csv, .md, .json, .log).
+* **Texte** (.txt, .csv, .md, .json, .log, .tsv).
+* **Code et requêtes SQL** (.sql, .py, .js, .ts, .java, .cs, .php, .go, .sh,
+  .ps1, .bat...) et **configuration** (.yaml, .toml, .ini, .env, .properties,
+  .xml, .config) : seules les valeurs sensibles changent, le code reste
+  valide (`email = '[EMAIL_1]'`) et l'encodage, les fins de ligne et
+  l'indentation sont conservés. Dans une chaîne de connexion, seuls
+  l'utilisateur, le mot de passe et le serveur sont masqués
+  (`postgresql://[IDENTIFIANT_1]:[SECRET_1]@[HOTE_1]:5432/crm`). Le modèle de
+  langue ne lit que les commentaires et les chaînes de caractères, pour ne pas
+  prendre un nom de variable pour un nom de personne. Un nom de serveur court
+  sans domaine (`srv-paie01` seul) n'est reconnu que dans une chaîne de
+  connexion ou après `host=` / `server=` : ajoutez les autres au dictionnaire.
 
 Pour tous les formats Office : la mise en forme est conservée, l'auteur et la
 société sont effacés des propriétés et la miniature d'aperçu est supprimée.

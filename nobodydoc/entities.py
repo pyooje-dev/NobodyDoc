@@ -21,6 +21,9 @@ CATEGORY_LABELS = {
     "ADRESSE": "Adresse postale",
     "URL": "Site web",
     "IP": "Adresse IP",
+    "HOTE": "Nom de serveur",
+    "IDENTIFIANT": "Identifiant de connexion",
+    "SECRET": "Mot de passe / clé secrète",
     "CLIENT": "Client",
     "PRODUIT": "Produit",
     "PROJET": "Projet",
@@ -36,6 +39,8 @@ PLACEHOLDER_RE = re.compile(r"\[[A-Z][A-Z0-9_]*_\d+\]")
 
 _DIGIT_CATEGORIES = {"TELEPHONE", "CARTE_BANCAIRE", "NIR"}
 _ALNUM_CATEGORIES = {"IBAN", "ID_ENTREPRISE"}
+# Valeurs comparées à l'identique : « Abc1 » et « aBC1 » sont deux secrets différents.
+CASE_SENSITIVE_CATEGORIES = {"SECRET"}
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,15 @@ class Span:
     @property
     def length(self) -> int:
         return self.end - self.start
+
+
+class CodeText(str):
+    """Texte complet d'un fichier de code : règles et dictionnaire, sans modèle de langue
+    (qui prendrait les noms de variables ou de tables pour des noms de personnes)."""
+
+
+class ProseText(str):
+    """Commentaire ou chaîne de caractères extrait du code : lu par le modèle de langue."""
 
 
 @dataclass
@@ -89,6 +103,8 @@ def normalize_value(category: str, value: str) -> str:
             elif digits.startswith("33") and len(digits) == 11:
                 digits = "0" + digits[2:]
         return f"{category}:{digits}"
+    if category in CASE_SENSITIVE_CATEGORIES:
+        return f"{category}:{value}"
     if category in _ALNUM_CATEGORIES:
         return f"{category}:" + re.sub(r"[^0-9A-Za-z]", "", value).upper()
     text = strip_accents(value).casefold()

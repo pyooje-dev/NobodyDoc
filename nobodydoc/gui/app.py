@@ -38,7 +38,8 @@ from PySide6.QtWidgets import (
 from .. import __version__, settings
 from ..dictionary import CompanyDictionary
 from ..entities import CATEGORY_LABELS, normalize_category
-from ..formats import SUPPORTED_EXTENSIONS
+from ..formats import SUPPORTED_EXTENSIONS, file_extension
+from ..formats.code import CodeHandler
 from ..session import AnonymizationSession
 from . import style
 from ..vault import TableStore
@@ -49,8 +50,11 @@ from .workers import AnalyzeWorker, WriteWorker, start
 FILE_FILTER = (
     "Documents pris en charge (" + " ".join(f"*{e}" for e in SUPPORTED_EXTENSIONS) + ");;"
     "Word (*.docx *.docm);;Excel (*.xlsx *.xlsm);;PowerPoint (*.pptx *.pptm);;"
-    "Mails (*.msg *.eml);;Texte (*.txt *.csv *.md *.json)"
+    "Mails (*.msg *.eml);;Texte (*.txt *.csv *.md *.json);;"
+    "Code et configuration (" + " ".join(f"*{e}" for e in CodeHandler.extensions) + ")"
 )
+# Dossiers ignorés quand on dépose un projet de code entier.
+SKIPPED_DIRS = {"node_modules", "venv", "__pycache__", "dist", "build", "target", "bin", "obj"}
 SOURCE_LABELS = {
     "dictionnaire": "Dictionnaire",
     "regle": "Règle",
@@ -89,11 +93,18 @@ def expand_paths(paths: list[Path]) -> tuple[list[Path], list[Path]]:
     """Développe les dossiers ; renvoie (fichiers pris en charge, fichiers refusés)."""
     accepted, rejected = [], []
     for path in paths:
-        candidates = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
+        if path.is_dir():
+            candidates = sorted(
+                p for p in path.rglob("*")
+                if p.is_file() and not any(
+                    part.startswith(".") or part in SKIPPED_DIRS for part in p.relative_to(path).parts[:-1])
+            )
+        else:
+            candidates = [path]
         for p in candidates:
             if p.name.startswith("~$"):  # fichiers temporaires d'Office
                 continue
-            (accepted if p.suffix.lower() in SUPPORTED_EXTENSIONS else rejected).append(p)
+            (accepted if file_extension(p).lower() in SUPPORTED_EXTENSIONS else rejected).append(p)
     return accepted, rejected
 
 
@@ -116,7 +127,7 @@ class DropZone(QFrame):
         main = label("<b>Glissez vos fichiers ici</b> ou cliquez pour les choisir", wrap=False)
         main.setAlignment(Qt.AlignCenter)
         main.setStyleSheet("font-size: 12pt; background: transparent;")
-        sub = label("Word, Excel, PowerPoint, mails Outlook (.msg, .eml), fichiers texte. Dossiers acceptés.", "subtitle")
+        sub = label("Word, Excel, PowerPoint, mails Outlook (.msg, .eml), texte, SQL et code. Dossiers acceptés.", "subtitle")
         sub.setAlignment(Qt.AlignCenter)
         sub.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(self)

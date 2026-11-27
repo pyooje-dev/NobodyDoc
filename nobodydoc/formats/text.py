@@ -1,4 +1,4 @@
-"""Fichiers texte : .txt, .csv, .md, .json, .xml, .log."""
+"""Fichiers texte : .txt, .csv, .md, .json, .log, .tsv."""
 
 from __future__ import annotations
 
@@ -7,15 +7,20 @@ from typing import Iterator
 from ..session import AnonymizationSession
 from .base import FileReport
 
-ENCODINGS = ("utf-8-sig", "utf-16", "cp1252", "latin-1")
+ENCODINGS = ("utf-8", "cp1252", "latin-1")
 
 
 def decode(data: bytes) -> tuple[str, str]:
+    """Décode et renvoie l'encodage à réutiliser pour écrire la copie.
+
+    La marque d'ordre des octets (BOM) n'est remise que si l'original en avait une :
+    en ajouter une gênerait certains scripts (#!/bin/sh) et outils.
+    """
+    if data.startswith(b"\xef\xbb\xbf"):
+        return data.decode("utf-8-sig"), "utf-8-sig"
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return data.decode("utf-16"), "utf-16"
     for encoding in ENCODINGS:
-        if encoding == "utf-16":
-            continue
         try:
             return data.decode(encoding), encoding
         except UnicodeDecodeError:

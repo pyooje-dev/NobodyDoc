@@ -22,7 +22,10 @@ from .detectors.ner import COMMON_FALSE_POSITIVES, NerDetector
 from .detectors.rules import ALL_RULE_CATEGORIES, find_rule_spans
 from .dictionary import CompanyDictionary, is_acronym
 from .entities import (
+    CASE_SENSITIVE_CATEGORIES,
     PLACEHOLDER_RE,
+    CodeText,
+    ProseText,
     SOURCE_PRIORITY,
     Entity,
     Span,
@@ -78,23 +81,37 @@ class AnonymizationSession:
         self._counters: Counter[str] = Counter()
         self._known_re: list[re.Pattern] | None = None
         self._seen_texts: set[str] = set()
+        self._seen_prose: set[str] = set()
 
     # ------------------------------------------------------------------ passe 1
 
     def collect(self, texts: Iterable[str]) -> None:
         batch = []
         for text in texts:
-            if text and text.strip() and text not in self._seen_texts:
+            if not text or not text.strip():
+                continue
+            if isinstance(text, ProseText):
+                # Extraits du code : déjà lus par les règles dans le texte complet.
+                if text in self._seen_prose:
+                    continue
+                self._seen_prose.add(text)
+            elif text in self._seen_texts:
+                continue
+            else:
                 self._seen_texts.add(text)
-                batch.append(text)
+            batch.append(text)
         if not batch:
             return
         ner_spans: dict[int, list[Span]] = {}
         if self.ner is not None and self.ner.available:
-            ner_spans = dict(self.ner.find_spans_many(batch))
+            ner_inputs = [i for i, t in enumerate(batch) if not isinstance(t, CodeText)]
+            for j, spans in self.ner.find_spans_many([str(batch[i]) for i in ner_inputs]):
+                ner_spans[ner_inputs[j]] = spans
         for i, text in enumerate(batch):
             spans = self._static_spans(text) + [self._extend_person(text, s) for s in ner_spans.get(i, [])]
             for span in self._resolve(text, spans):
+                if isinstance(text, ProseText) and span.source != "ner":
+                    continue  # déjà compté dans le texte complet du fichier
                 entity = self._register(span.text, span.category, span.source)
                 if entity is not None:
                     entity.occurrences += 1
@@ -257,7 +274,10 @@ class AnonymizationSession:
         return normalize_value(category, value)
 
     def _lookup(self, value: str, category: str | None) -> Entity | None:
-        for key in {self._key(value, category), self._key(value, None)}:
+        keys = {self._key(value, category)}
+        if category not in CASE_SENSITIVE_CATEGORIES:
+            keys.add(self._key(value, None))
+        for key in keys:
             placeholder = self._index.get(key)
             if placeholder is not None:
                 return self.entities[placeholder]
@@ -280,7 +300,8 @@ class AnonymizationSession:
             if canonical:
                 self._index.setdefault(self._key(canonical, None), entity.placeholder)
             self._index[self._key(value, category)] = entity.placeholder
-            self._index.setdefault(self._key(value, None), entity.placeholder)
+            if entity.category not in CASE_SENSITIVE_CATEGORIES:
+                self._index.setdefault(self._key(value, None), entity.placeholder)
             if entity.category == "PERSONNE" and self.config.split_person_names:
                 self._add_name_parts(entity, value)
             self._known_re = None
